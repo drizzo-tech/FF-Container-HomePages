@@ -14,10 +14,26 @@ const newTab = {
     // Checking the URL alone should be enough but keeping the openerTabId check should not cause issues.
     //
     // Added check for pop-up to not redirect back to homepage
+    console.log("Checking tab:", {
+      id: tab.id,
+      windowId: tab.windowId,
+      openerTabId: tab.openerTabId,
+      url: tab.url,
+      title: tab.title,
+    });
+
+    // check if this tab is in a popup window
     if (tab.windowId) {
       try {
         const window = await browser.windows.get(tab.windowId);
+        console.log("Window info:", {
+          type: window.type,
+          id: window.id,
+          state: window.state,
+        });
+
         if (window.type === "popup") {
+          console.log("Detected popup - not redirecting");
           return false;
         }
       } catch (e) {
@@ -28,20 +44,50 @@ const newTab = {
       tab.openerTabId === undefined &&
       (tab.url === "about:newtab" || tab.url === "about:blank") &&
       tab.title === "New Tab";
+
+    console.log("isNew result:", isNew);
     return isNew;
   },
   async onCreated(tab) {
+    console.log("Tab created event fired for tab:", tab.id);
+
     if (await newTab.isNewTab(tab)) {
-      try {
-        const defaultUrl = await containerDefaultPages.getDefaultPage(
-          tab.cookieStoreId,
-        );
-        if (defaultUrl) {
-          browser.tabs.update(tab.tabId, { url: defaultUrl });
+      console.log("Initial check passed - waiting to see if URL changes...");
+
+      // Wait to see if the URL changes (indicating it's not a real new tab)
+      setTimeout(async () => {
+        try {
+          const updatedTab = await browser.tabs.get(tab.id);
+          console.log("Tab after delay:", {
+            url: updatedTab.url,
+            title: updatedTab.title,
+            status: updatedTab.status,
+          });
+
+          // If URL is still about:newtab or about:blank, it's likely a real new tab
+          if (
+            updatedTab.url === "about:newtab" ||
+            updatedTab.url === "about:blank"
+          ) {
+            console.log(
+              "Still blank after delay - redirecting to default page",
+            );
+            const defaultUrl = await containerDefaultPages.getDefaultPage(
+              updatedTab.cookieStoreId,
+            );
+            if (defaultUrl) {
+              console.log("Redirecting to:", defaultUrl);
+              browser.tabs.update(updatedTab.id, { url: defaultUrl });
+            }
+          } else {
+            console.log("URL changed to real content - not redirecting");
+          }
+        } catch (e) {
+          console.log("Error in delayed check:", e);
         }
-      } catch (e) {
-        console.log(e);
-      }
+      }, 300); // Try 300ms to give popup time to load
+    } else {
+      console.log("Initial check failed - not redirecting");
     }
   },
   init() {
