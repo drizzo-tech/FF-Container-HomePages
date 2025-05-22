@@ -1,0 +1,7 @@
+# Web-ext build artifacts
+web-ext-artifacts/
+
+# Other common items you might want:
+node_modules/
+*.log
+.DS_Store
